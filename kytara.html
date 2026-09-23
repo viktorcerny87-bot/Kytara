@@ -150,7 +150,8 @@ li.skip{opacity:.55}
       <div class="actions">
         <button class="btn" id="playChord">Poslechnout akord</button>
         <button class="btn" id="playSlow">Po jednotlivých strunách</button>
-        <button class="btn primary wide" id="listenBtn">Poslouchat, jak hraju akord</button>
+        <button class="btn primary wide" id="autoBtn">Poznat, jaký akord hraju</button>
+        <button class="btn wide" id="listenBtn">Poslouchat vybraný akord</button>
         <button class="btn wide" id="checkBtn">Přesná kontrola struna po struně</button>
       </div>
     </div>
@@ -451,16 +452,23 @@ function chordTick(r,onset,now){
 /* whole-chord listening */
 let lis=null;
 function setVerdict(title,cls,html){const v=$('verdict'); v.hidden=false; const t=$('vTitle'); t.textContent=title; t.className='vt'+(cls?' '+cls:''); $('vText').innerHTML=html||'';}
-function waitingVerdict(){setVerdict('Brnkni celý akord','', 'Drž akord, jednou přejeď přes struny a nech je znít. Výsledek se ukáže asi po vteřině. Rychlá kontrola občas přehlédne tlumenou strunu, jistotu dá přesná kontrola po strunách.'); renderChord();}
-function stopListen(){ if(!lis) return; lis=null; $('listenBtn').textContent='Poslouchat, jak hraju akord'; $('verdict').hidden=true; renderChord(); }
-$('listenBtn').addEventListener('click',async()=>{
-  if(lis){stopListen(); return;}
+const LBL={autoBtn:'Poznat, jaký akord hraju',listenBtn:'Poslouchat vybraný akord'};
+function setListenButtons(){ Object.keys(LBL).forEach(id=>{ const on=lis&&((id==='autoBtn')===lis.auto); $(id).textContent=on?'Přestat poslouchat':LBL[id]; }); }
+function waitingVerdict(){
+  if(lis&&lis.auto) setVerdict('Zahraj libovolný akord','','Hraj akordy v jakémkoli pořadí. Po každém brnknutí ukážu, který akord hraješ, a jestli zní čistě.');
+  else setVerdict(`Brnkni akord ${current}`,'', 'Drž akord, jednou přejeď přes struny a nech je znít. Výsledek se ukáže asi po vteřině. Rychlá kontrola občas přehlédne tlumenou strunu, jistotu dá přesná kontrola po strunách.');
+  renderChord();
+}
+function stopListen(){ if(!lis) return; lis=null; setListenButtons(); $('verdict').hidden=true; renderChord(); }
+async function startListen(auto){
+  if(lis&&lis.auto===auto){stopListen(); return;}
   if(!micOn){const ok=await startMic(); if(!ok) return;}
   if(chk) stopCheck();
-  lis={onsetAt:0,acc:null,frames:0};
-  $('listenBtn').textContent='Přestat poslouchat';
-  waitingVerdict();
-});
+  lis={auto,onsetAt:0,acc:null,frames:0};
+  setListenButtons(); waitingVerdict();
+}
+$('listenBtn').addEventListener('click',()=>startListen(false));
+$('autoBtn').addEventListener('click',()=>startListen(true));
 function binOf(f){return f*analyser2.fftSize/ctx.sampleRate;}
 function amp(acc,f,c){
   const lo=Math.max(0,Math.round(binOf(f*Math.pow(2,-c/1200)))), hi=Math.min(acc.length-1,Math.round(binOf(f*Math.pow(2,c/1200))));
@@ -475,11 +483,11 @@ function listenTick(r,onset,now){
     for(let b=0;b<MAXB;b++){const v=spec[b]; if(isFinite(v)) lis.acc[b]+=Math.pow(10,v/20);}
     lis.frames++;
   }else if(dt>1100){
-    if(lis.frames>=5) evaluateChord(lis.acc);
+    if(lis.frames>=5){ if(lis.auto) recognizeChord(lis.acc); else evaluateChord(lis.acc,false); }
     lis.acc=null;
   }
 }
-function evaluateChord(acc){
+function evaluateChord(acc,auto){
   const ch=CHORDS[current];
   const b0=Math.floor(binOf(70)), b1=Math.min(acc.length,Math.floor(binOf(450)));
   const sorted=Array.from(acc.slice(b0,b1)).sort((a,b)=>a-b);
@@ -520,11 +528,33 @@ function evaluateChord(acc){
   });
   renderChord(undefined,status);
   if(!problems.length){
-    setVerdict(`✓ ${current} zní správně`,'good',`Slyším všech ${played.length} strun akordu. Zkus ho zahrát ještě párkrát, ať si to prsty zapamatují.`);
+    setVerdict(auto?`Hraješ ${current} ✓`:`✓ ${current} zní správně`,'good',`Slyším všech ${played.length} strun akordu. Zkus ho zahrát ještě párkrát, ať si to prsty zapamatují.`);
   }else{
     problems.sort((a,b)=>a.i-b.i);
-    setVerdict('Ještě ne úplně','bad',problems.map(p=>`<div><b>${STRINGS[p.i].num}. struna (${STRINGS[p.i].name})</b> ${p.t}</div>`).join('')+'<div style="opacity:.75">Oprav to a brnkni znovu.</div>');
+    setVerdict(auto?`Nejspíš hraješ ${current}, ale ještě ne úplně`:'Ještě ne úplně','bad',problems.map(p=>`<div><b>${STRINGS[p.i].num}. struna (${STRINGS[p.i].name})</b> ${p.t}</div>`).join('')+'<div style="opacity:.75">Oprav to a brnkni znovu.</div>');
   }
+}
+
+function recognizeChord(acc){
+  const b0=Math.round(binOf(75)), b1=Math.min(acc.length-2,Math.round(binOf(450)));
+  const sorted=Array.from(acc.slice(Math.floor(binOf(70)),Math.floor(binOf(450)))).sort((a,b)=>a-b);
+  const floor=sorted[Math.floor(sorted.length*0.5)]||1e-9;
+  let mx=0; for(let b=b0;b<=b1;b++) if(acc[b]>mx) mx=acc[b];
+  const pk=[]; for(let b=b0;b<=b1;b++){const v=acc[b]; if(v>acc[b-1]&&v>=acc[b+1]&&v>floor*8&&v>mx*0.05) pk.push({f:b*ctx.sampleRate/analyser2.fftSize,a:v});}
+  const tot=pk.reduce((s,p)=>s+p.a,0);
+  if(!pk.length||mx<floor*6){setVerdict('Akord jsem neslyšel zřetelně','bad','Brnkni o něco silněji a drž telefon blíž ke kytaře.'); renderChord(); return;}
+  let best=null,bestScore=0;
+  Object.keys(CHORDS).forEach(k=>{
+    const fs=CHORDS[k].frets.map((fr,i)=>fr==='x'?null:freqOf(i,fr)).filter(Boolean);
+    const E=pk.filter(p=>fs.some(q=>[1,2,3,4].some(n=>Math.abs(cents(p.f,q*n))<30))).reduce((s,p)=>s+p.a,0)/tot;
+    const cov=fs.filter(f=>Math.max(amp(acc,f,35),f<140?0.7*amp(acc,2*f,30):0)>Math.max(floor*4,mx*0.06)).length/fs.length;
+    const sc=E*cov; if(sc>bestScore){bestScore=sc; best=k;}
+  });
+  if(!best||bestScore<0.55){
+    setVerdict('Tenhle akord nepoznávám','bad',`Umím poznat ${Object.keys(CHORDS).join(', ')}. Zkontroluj prsty podle nákresu a brnkni znovu.`);
+    renderChord(); return;
+  }
+  current=best; evaluateChord(acc,true);
 }
 
 /* ---------- tabs ---------- */
