@@ -73,6 +73,11 @@ ol.steps li{margin-bottom:6px}
 .chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 16px;font-weight:600;font-size:1.05rem}
 .chip[aria-pressed="true"]{background:var(--wood);color:var(--pearl);border-color:var(--wood)}
 .chordwrap{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.verdict{border-radius:16px;padding:12px 16px;background:var(--wood);color:var(--pearl)}
+.vt{font-size:1.3rem;font-weight:800;line-height:1.2}
+.vt.good{color:var(--good)} .vt.bad{color:var(--bad)}
+.vd{font-size:.95rem;margin-top:6px}
+.vd div{margin-top:4px}
 .diagram{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 8px 6px}
 .diagram svg{width:100%;height:auto;display:block;max-height:360px}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -140,11 +145,13 @@ li.skip{opacity:.55}
     <div class="chips" id="chips"></div>
     <div class="chordwrap">
       <div class="diagram"><svg id="diagram" viewBox="0 0 260 300" role="img" aria-label="Hmatník akordu"></svg></div>
+      <div class="verdict" id="verdict" hidden aria-live="polite"><div class="vt" id="vTitle"></div><div class="vd" id="vText"></div></div>
       <p class="muted" id="chordNote" style="margin:0"></p>
       <div class="actions">
         <button class="btn" id="playChord">Poslechnout akord</button>
         <button class="btn" id="playSlow">Po jednotlivých strunách</button>
-        <button class="btn primary wide" id="checkBtn">Zkontrolovat struny</button>
+        <button class="btn primary wide" id="listenBtn">Poslouchat, jak hraju akord</button>
+        <button class="btn wide" id="checkBtn">Přesná kontrola struna po struně</button>
       </div>
     </div>
 
@@ -189,7 +196,7 @@ function noteName(f){const m=Math.round(69+12*Math.log2(f/440));return NOTES[(m%
 function freqOf(si,fret){return STRINGS[si].f*Math.pow(2,fret/12);}
 
 /* ---------- audio ---------- */
-let ctx=null,analyser=null,buf=null,dBuf=null,micOn=false,muteUntil=0;
+let ctx=null,analyser=null,buf=null,dBuf=null,micOn=false,muteUntil=0,analyser2=null,spec=null,MAXB=0;
 async function ensureCtx(){
   if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();}
   if(ctx.state==='suspended'){await ctx.resume();}
@@ -223,6 +230,8 @@ async function startMic(){
     const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     const src=ctx.createMediaStreamSource(stream);
     analyser=ctx.createAnalyser(); analyser.fftSize=4096; src.connect(analyser);
+    analyser2=ctx.createAnalyser(); analyser2.fftSize=32768; analyser2.smoothingTimeConstant=0; src.connect(analyser2);
+    spec=new Float32Array(analyser2.frequencyBinCount); MAXB=Math.ceil(460*analyser2.fftSize/ctx.sampleRate)+2;
     buf=new Float32Array(analyser.fftSize); dBuf=new Float32Array(1024);
     micOn=true; $('micDot').classList.add('on'); $('micBtn').hidden=true;
     $('micState').textContent='Mikrofon poslouchá.';
@@ -268,7 +277,7 @@ function tick(){
   rmsHist.push(r.rms); if(rmsHist.length>4) rmsHist.shift();
   if(r.f>0){hist.push(r.f); if(hist.length>5) hist.shift();} else if(r.rms<0.006){hist.length=0;}
   const f=hist.length>=3?median(hist):-1;
-  if(!views.chord.hidden) chordTick(r,onset,now); else tunerTick(f,r);
+  if(!views.chord.hidden){ if(lis) listenTick(r,onset,now); else chordTick(r,onset,now); } else tunerTick(f,r);
   setTimeout(tick,40);
 }
 
@@ -332,10 +341,10 @@ let current='Em';
 const chips=$('chips');
 Object.keys(CHORDS).forEach(k=>{
   const b=document.createElement('button'); b.className='chip'; b.textContent=k;
-  b.addEventListener('click',()=>{current=k; stopCheck(); renderChord();});
+  b.addEventListener('click',()=>{current=k; stopCheck(); if(lis) waitingVerdict();});
   chips.appendChild(b);
 });
-function renderChord(highlight){
+function renderChord(highlight,status){
   [...chips.children].forEach(b=>b.setAttribute('aria-pressed',b.textContent===current?'true':'false'));
   const ch=CHORDS[current]; $('chordNote').textContent=ch.note;
   const x0=40, dx=36, y0=50, dy=52, frets=4;
@@ -344,13 +353,14 @@ function renderChord(highlight){
   for(let f=1;f<=frets;f++) s+=`<line x1="${x0}" x2="${x0+dx*5}" y1="${y0+f*dy}" y2="${y0+f*dy}" stroke="var(--muted)" stroke-width="2"/>`;
   s+=`<text x="${x0-14}" y="${y0+dy/2+5}" text-anchor="end" font-size="11" fill="var(--muted)">1</text><text x="${x0-14}" y="${y0+dy*1.5+5}" text-anchor="end" font-size="11" fill="var(--muted)">2</text><text x="${x0-14}" y="${y0+dy*2.5+5}" text-anchor="end" font-size="11" fill="var(--muted)">3</text>`;
   for(let i=0;i<6;i++){
-    const x=x0+i*dx, hl=highlight===i;
-    s+=`<line x1="${x}" x2="${x}" y1="${y0}" y2="${y0+frets*dy}" stroke="${hl?'var(--brass)':'var(--ink)'}" stroke-width="${hl?4:(3.2-i*0.4)}"/>`;
+    const x=x0+i*dx, hl=highlight===i, st=status&&status[i];
+    const col=hl?'var(--brass)':st==='ok'?'var(--good)':st==='bad'?'var(--bad)':'var(--ink)';
+    s+=`<line x1="${x}" x2="${x}" y1="${y0}" y2="${y0+frets*dy}" stroke="${col}" stroke-width="${(hl||st)?4:(3.2-i*0.4)}"/>`;
     const fr=ch.frets[i];
     if(fr==='x') s+=`<text x="${x}" y="${y0-14}" text-anchor="middle" font-size="16" font-weight="800" fill="var(--bad)">✕</text>`;
-    else if(fr===0) s+=`<circle cx="${x}" cy="${y0-19}" r="7" fill="none" stroke="${hl?'var(--brass)':'var(--ink)'}" stroke-width="2"/>`;
-    else s+=`<circle cx="${x}" cy="${y0+(fr-0.5)*dy}" r="14" fill="${hl?'var(--brass)':'var(--wood)'}"/><text x="${x}" y="${y0+(fr-0.5)*dy+5}" text-anchor="middle" font-size="15" font-weight="800" fill="var(--pearl)">${ch.fingers[i]}</text>`;
-    s+=`<text x="${x}" y="${y0+frets*dy+22}" text-anchor="middle" font-size="14" font-weight="600" fill="${hl?'var(--brass)':'var(--muted)'}">${STRINGS[i].name}</text>`;
+    else if(fr===0) s+=`<circle cx="${x}" cy="${y0-19}" r="7" fill="none" stroke="${col}" stroke-width="2"/>`;
+    else s+=`<circle cx="${x}" cy="${y0+(fr-0.5)*dy}" r="14" fill="${(hl||st)?col:'var(--wood)'}"/><text x="${x}" y="${y0+(fr-0.5)*dy+5}" text-anchor="middle" font-size="15" font-weight="800" fill="var(--pearl)">${ch.fingers[i]}</text>`;
+    s+=`<text x="${x}" y="${y0+frets*dy+22}" text-anchor="middle" font-size="14" font-weight="600" fill="${(hl||st)?col:'var(--muted)'}">${STRINGS[i].name}</text>`;
   }
   $('diagram').innerHTML=s;
 }
@@ -363,6 +373,7 @@ let chk=null;
 function stopCheck(){chk=null; $('checkCard').hidden=true; renderChord();}
 $('checkBtn').addEventListener('click',async()=>{
   if(!micOn){const ok=await startMic(); if(!ok) return;}
+  stopListen();
   const ch=CHORDS[current];
   chk={order:ch.frets.map((f,i)=>f==='x'?-1:i).filter(i=>i>=0), pos:0, res:{}, armAt:performance.now()+400, onsetAt:0, samples:[], loudFrames:0, waiting:false};
   $('checkCard').hidden=false; $('summary').hidden=true; renderChecklist();
@@ -437,12 +448,91 @@ function chordTick(r,onset,now){
   }
 }
 
+/* whole-chord listening */
+let lis=null;
+function setVerdict(title,cls,html){const v=$('verdict'); v.hidden=false; const t=$('vTitle'); t.textContent=title; t.className='vt'+(cls?' '+cls:''); $('vText').innerHTML=html||'';}
+function waitingVerdict(){setVerdict('Brnkni celý akord','', 'Drž akord, jednou přejeď přes struny a nech je znít. Výsledek se ukáže asi po vteřině. Rychlá kontrola občas přehlédne tlumenou strunu, jistotu dá přesná kontrola po strunách.'); renderChord();}
+function stopListen(){ if(!lis) return; lis=null; $('listenBtn').textContent='Poslouchat, jak hraju akord'; $('verdict').hidden=true; renderChord(); }
+$('listenBtn').addEventListener('click',async()=>{
+  if(lis){stopListen(); return;}
+  if(!micOn){const ok=await startMic(); if(!ok) return;}
+  if(chk) stopCheck();
+  lis={onsetAt:0,acc:null,frames:0};
+  $('listenBtn').textContent='Přestat poslouchat';
+  waitingVerdict();
+});
+function binOf(f){return f*analyser2.fftSize/ctx.sampleRate;}
+function amp(acc,f,c){
+  const lo=Math.max(0,Math.round(binOf(f*Math.pow(2,-c/1200)))), hi=Math.min(acc.length-1,Math.round(binOf(f*Math.pow(2,c/1200))));
+  let m=0; for(let b=lo;b<=hi;b++) if(acc[b]>m) m=acc[b]; return m;
+}
+function listenTick(r,onset,now){
+  if(onset&&(!lis.onsetAt||now-lis.onsetAt>1400)){lis.onsetAt=now; lis.acc=new Float32Array(MAXB); lis.frames=0;}
+  if(!lis.onsetAt||!lis.acc) return;
+  const dt=now-lis.onsetAt;
+  if(dt>=300&&dt<=1100){
+    analyser2.getFloatFrequencyData(spec);
+    for(let b=0;b<MAXB;b++){const v=spec[b]; if(isFinite(v)) lis.acc[b]+=Math.pow(10,v/20);}
+    lis.frames++;
+  }else if(dt>1100){
+    if(lis.frames>=5) evaluateChord(lis.acc);
+    lis.acc=null;
+  }
+}
+function evaluateChord(acc){
+  const ch=CHORDS[current];
+  const b0=Math.floor(binOf(70)), b1=Math.min(acc.length,Math.floor(binOf(450)));
+  const sorted=Array.from(acc.slice(b0,b1)).sort((a,b)=>a-b);
+  const floor=sorted[Math.floor(sorted.length*0.5)]||1e-9;
+  const played=[]; ch.frets.forEach((fr,i)=>{if(fr!=='x') played.push({i,fr,f:freqOf(i,fr)});});
+  const extra=[];
+  const explainedBy=(f,list)=>list.some(q=>[1,2,3,4].some(n=>Math.abs(cents(f,q*n))<30));
+  const explained=f=>explainedBy(f,played.map(p=>p.f).concat(extra));
+  const level=p=>{
+    let a=amp(acc,p.f,35);
+    if(p.f<140){
+      const others=played.filter(q=>q!==p).map(q=>q.f);
+      [2,3].forEach(h=>{ if(!explainedBy(h*p.f,others)) a=Math.max(a,0.7*amp(acc,h*p.f,30)); });
+    }
+    return a;
+  };
+  const peak=Math.max(...played.map(level));
+  if(peak<floor*6){setVerdict('Akord jsem neslyšel zřetelně','bad','Brnkni o něco silněji a drž telefon blíž ke kytaře.'); renderChord(); return;}
+  const status={}, problems=[];
+  ch.frets.forEach((fr,i)=>{
+    if(fr!=='x') return;
+    const f=STRINGS[i].f; if(explained(f)) return;
+    const a=amp(acc,f,30);
+    if(a>floor*6&&a>peak*0.05){status[i]='bad'; extra.push(f); problems.push({i,t:'zní, ale má zůstat nezahraná. Začni brnkat až od další struny.'});}
+  });
+  played.forEach(p=>{
+    const a=level(p), fu=p.f*Math.pow(2,1/12), fd=p.f*Math.pow(2,-1/12);
+    const up=explained(fu)?0:amp(acc,fu,30), dn=explained(fd)?0:amp(acc,fd,30), nb=Math.max(up,dn);
+    if(p.fr>0&&nb>a*1.5&&nb>peak*0.08){
+      status[p.i]='bad'; extra.push(up>dn?fu:fd);
+      problems.push({i:p.i,t:`zní o pražec ${up>dn?'výš':'níž'}. Dej prst přesně na ${p.fr}. pražec.`});
+    }else if(a>floor*4&&a>peak*0.06){
+      status[p.i]='ok';
+    }else{
+      status[p.i]='bad';
+      problems.push({i:p.i,t:p.fr>0?`skoro nezní. Přitlač pevněji prst č. ${ch.fingers[p.i]} na ${p.fr}. pražci, těsně u kovového pražce.`:'skoro nezní. Má znít volně, nejspíš se jí dotýká jiný prst. Zvedni prsty víc do oblouku.'});
+    }
+  });
+  renderChord(undefined,status);
+  if(!problems.length){
+    setVerdict(`✓ ${current} zní správně`,'good',`Slyším všech ${played.length} strun akordu. Zkus ho zahrát ještě párkrát, ať si to prsty zapamatují.`);
+  }else{
+    problems.sort((a,b)=>a.i-b.i);
+    setVerdict('Ještě ne úplně','bad',problems.map(p=>`<div><b>${STRINGS[p.i].num}. struna (${STRINGS[p.i].name})</b> ${p.t}</div>`).join('')+'<div style="opacity:.75">Oprav to a brnkni znovu.</div>');
+  }
+}
+
 /* ---------- tabs ---------- */
 const views={tune:$('view-tune'),chord:$('view-chord')};
 function show(v){
   views.tune.hidden=v!=='tune'; views.chord.hidden=v!=='chord';
   $('tab-tune').setAttribute('aria-selected',v==='tune'); $('tab-chord').setAttribute('aria-selected',v==='chord');
-  if(v==='tune') stopCheck();
+  if(v==='tune'){ stopCheck(); stopListen(); }
 }
 $('tab-tune').addEventListener('click',()=>show('tune'));
 $('tab-chord').addEventListener('click',()=>show('chord'));
