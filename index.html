@@ -575,6 +575,7 @@ $('tab-tune').addEventListener('click',()=>show('tune'));
 $('tab-chord').addEventListener('click',()=>show('chord'));
 
 updatePegs(); renderChord(); setNeedle(0);
+if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});}
 })();
 </script>
 </body>
