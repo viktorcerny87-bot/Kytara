@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ladička a akordy</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#1C1410">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kytara">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E9ECEA; --surface:#F7F8F6; --ink:#2B1D17; --muted:#6C625C; --line:#CDD2CE;
+  --brass:#A8761F; --good:#23874C; --bad:#C24A31; --wood:#3A261D; --pearl:#F4F1EC;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#1C1410; --surface:#281C16; --ink:#F1E6D8; --muted:#B3A294; --line:#43332A;
+    --brass:#DBAA4E; --good:#5CCB86; --bad:#EE7458; --wood:#120C09; --pearl:#EDE6DA;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1C1410; --surface:#281C16; --ink:#F1E6D8; --muted:#B3A294; --line:#43332A;
+  --brass:#DBAA4E; --good:#5CCB86; --bad:#EE7458; --wood:#120C09; --pearl:#EDE6DA;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:17px;line-height:1.45;-webkit-font-smoothing:antialiased}
+main{max-width:560px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:1.55rem;font-weight:800;letter-spacing:-.02em;margin:4px 0 14px;line-height:1.1}
+h2{font-size:1.15rem;font-weight:600;margin:0 0 6px}
+p{margin:0 0 10px}
+.muted{color:var(--muted)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:18px}
+.tabs button{border:0;background:transparent;padding:10px;border-radius:10px;font-weight:600}
+.tabs button[aria-selected="true"]{background:var(--wood);color:var(--pearl)}
+
+.mic{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.btn{border:1px solid var(--line);background:var(--surface);padding:11px 16px;border-radius:12px;font-weight:600}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#1A120D}
+.btn:disabled{opacity:.5}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none}
+.dot.on{background:var(--good);box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 25%,transparent)}
+.err{color:var(--bad);font-size:.95rem}
+
+/* tuner */
+.stage{background:var(--wood);color:var(--pearl);border-radius:22px;padding:20px 16px 18px;text-align:center;position:relative;overflow:hidden}
+.note{font-size:5.2rem;font-weight:800;line-height:1;letter-spacing:-.04em;min-height:5.2rem;transition:color .15s}
+.note.good{color:var(--good)}
+.target{font-size:.95rem;opacity:.75;margin-top:4px;min-height:1.4em}
+.meter{width:100%;height:auto;display:block;margin:14px 0 6px}
+.advice{font-size:1.25rem;font-weight:600;min-height:3.4em;display:flex;align-items:center;justify-content:center;padding:0 6px}
+.advice.good{color:var(--good)} .advice.bad{color:var(--bad)}
+.pegs{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:16px 0 8px}
+.peg{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:1px;position:relative}
+.peg b{font-size:1.35rem;line-height:1.1}
+.peg small{font-size:.72rem;color:var(--muted)}
+.peg[aria-pressed="true"]{border-color:var(--brass);box-shadow:inset 0 0 0 2px var(--brass)}
+.peg.done::after{content:"✓";position:absolute;top:2px;right:6px;font-size:.75rem;color:var(--good);font-weight:800}
+.hint{font-size:.9rem;color:var(--muted);margin-bottom:18px}
+ol.steps{padding-left:1.3em;margin:6px 0 0}
+ol.steps li{margin-bottom:6px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:16px}
+
+/* chords */
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;-webkit-overflow-scrolling:touch}
+.chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 16px;font-weight:600;font-size:1.05rem}
+.chip[aria-pressed="true"]{background:var(--wood);color:var(--pearl);border-color:var(--wood)}
+.chordwrap{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.verdict{border-radius:16px;padding:12px 16px;background:var(--wood);color:var(--pearl)}
+.vt{font-size:1.3rem;font-weight:800;line-height:1.2}
+.vt.good{color:var(--good)} .vt.bad{color:var(--bad)}
+.vd{font-size:.95rem;margin-top:6px}
+.vd div{margin-top:4px}
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 8px 6px}
+.diagram svg{width:100%;height:auto;display:block;max-height:360px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.actions .wide{grid-column:1/-1}
+.checklist{list-style:none;margin:0;padding:0}
+.checklist li{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.checklist li:first-child{border-top:0}
+.badge{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;border:2px solid var(--line);font-size:.95rem;line-height:1}
+.badge small{display:block;font-size:.6rem;font-weight:600;opacity:.7}
+li.current .badge{border-color:var(--brass);color:var(--brass)}
+li.ok .badge{border-color:var(--good);background:var(--good);color:var(--surface)}
+li.fail .badge{border-color:var(--bad);color:var(--bad)}
+li.skip{opacity:.55}
+.msg{font-size:.95rem}
+.msg strong{display:block;font-size:1rem}
+.rowbtns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.rowbtns .btn{padding:7px 12px;font-size:.9rem}
+.summary{font-weight:600;margin-top:10px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Ladička a kontrola akordů</h1>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-tune" aria-selected="true">Ladění</button>
+    <button role="tab" id="tab-chord" aria-selected="false">Akordy</button>
+  </div>
+
+  <div class="mic">
+    <span class="dot" id="micDot"></span>
+    <button class="btn primary" id="micBtn">Zapnout mikrofon</button>
+    <span class="muted" id="micState" style="font-size:.9rem">Aplikace poslouchá kytaru přes mikrofon telefonu.</span>
+  </div>
+  <p class="err" id="micErr" hidden></p>
+
+  <!-- TUNER -->
+  <section id="view-tune">
+    <div class="stage">
+      <div class="note" id="note">–</div>
+      <div class="target" id="target">Brnkni na jednu strunu</div>
+      <svg class="meter" id="meter" viewBox="0 0 320 70" aria-hidden="true"></svg>
+      <div class="advice" id="advice">Zapni mikrofon a zahraj jednu strunu.</div>
+    </div>
+
+    <div class="pegs" id="pegs"></div>
+    <p class="hint">Klepnutím na strunu uslyšíš, jak má znít, a ladička bude hlídat jen ji. Dalším klepnutím se vrátíš k automatickému rozpoznání.</p>
+
+    <div class="card">
+      <h2>Jak ladit bez hudebního sluchu</h2>
+      <ol class="steps">
+        <li>Drž telefon blízko kytary, v tichu.</li>
+        <li>Brnkni na jednu strunu a nech ji znít. Nehraj ostatní.</li>
+        <li>Když je tón nízko, strunu přitáhni. Když je vysoko, povol ji.</li>
+        <li>Nevíš, kterým směrem točit? Otoč kolíčkem jen kousek a sleduj, jestli se ukazatel posune ke středu.</li>
+        <li>Otáčej pomalu. Až se tón rozsvítí zeleně, pokračuj další strunou.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- CHORDS -->
+  <section id="view-chord" hidden>
+    <div class="chips" id="chips"></div>
+    <div class="chordwrap">
+      <div class="diagram"><svg id="diagram" viewBox="0 0 260 300" role="img" aria-label="Hmatník akordu"></svg></div>
+      <div class="verdict" id="verdict" hidden aria-live="polite"><div class="vt" id="vTitle"></div><div class="vd" id="vText"></div></div>
+      <p class="muted" id="chordNote" style="margin:0"></p>
+      <div class="actions">
+        <button class="btn" id="playChord">Poslechnout akord</button>
+        <button class="btn" id="playSlow">Po jednotlivých strunách</button>
+        <button class="btn primary wide" id="autoBtn">Poznat, jaký akord hraju</button>
+        <button class="btn wide" id="listenBtn">Poslouchat vybraný akord</button>
+        <button class="btn wide" id="checkBtn">Přesná kontrola struna po struně</button>
+      </div>
+    </div>
+
+    <div class="card" id="checkCard" hidden>
+      <h2>Kontrola struna po struně</h2>
+      <p class="muted" id="checkIntro">Drž akord a brnkej pomalu vždy jen na zvýrazněnou strunu.</p>
+      <ul class="checklist" id="checklist"></ul>
+      <p class="summary" id="summary" hidden></p>
+    </div>
+
+    <div class="card">
+      <h2>Tipy pro čistý akord</h2>
+      <p>Tlač strunu špičkou prstu, těsně před kovovým pražcem, ne přímo na něm. Prsty drž do oblouku, aby se nedotýkaly sousedních strun. Struny označené ✕ nehraj.</p>
+      <p class="muted" style="margin:0">Čísla v kolečkách jsou prsty levé ruky: 1 ukazováček, 2 prostředníček, 3 prsteníček, 4 malíček. Kolečko nad strunou znamená, že struna zní volně.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+"use strict";
+const NOTES=['C','C#','D','D#','E','F','F#','G','G#','A','B','H'];
+// strings from 6th (thickest) to 1st
+const STRINGS=[
+  {name:'E',num:6,f:82.407},{name:'A',num:5,f:110.000},{name:'D',num:4,f:146.832},
+  {name:'G',num:3,f:195.998},{name:'H',num:2,f:246.942},{name:'E',num:1,f:329.628}
+];
+// frets per string 6→1, 'x' = don't play; fingers per string
+const CHORDS={
+  'Em':{frets:[0,2,2,0,0,0],fingers:[0,2,3,0,0,0],note:'Nejjednodušší akord, stačí dva prsty. Hrají všech šest strun.'},
+  'Am':{frets:['x',0,2,2,1,0],fingers:[0,0,2,3,1,0],note:'Nejtlustší strunu E nehraj, začni od struny A.'},
+  'C':{frets:['x',3,2,0,1,0],fingers:[0,3,2,0,1,0],note:'Prsteníček na 3. pražci struny A. Pozor, aby se nedotýkal struny D.'},
+  'G':{frets:[3,2,0,0,0,3],fingers:[2,1,0,0,0,3],note:'Hrají všechny struny. Prostřední tři zní volně.'},
+  'D':{frets:['x','x',0,2,3,2],fingers:[0,0,0,1,3,2],note:'Hraj jen čtyři nejtenčí struny, od struny D dolů.'},
+  'E':{frets:[0,2,2,1,0,0],fingers:[0,2,3,1,0,0],note:'Jako Em, jen přidáš ukazováček na 1. pražec struny G.'},
+  'A':{frets:['x',0,2,2,2,0],fingers:[0,0,1,2,3,0],note:'Tři prsty vedle sebe na 2. pražci. Nejtenčí struna musí zůstat volná.'},
+  'Dm':{frets:['x','x',0,2,3,1],fingers:[0,0,0,2,3,1],note:'Hraj jen čtyři nejtenčí struny.'}
+};
+const $=id=>document.getElementById(id);
+const cents=(f,ref)=>1200*Math.log2(f/ref);
+function noteName(f){const m=Math.round(69+12*Math.log2(f/440));return NOTES[(m%12+12)%12];}
+function freqOf(si,fret){return STRINGS[si].f*Math.pow(2,fret/12);}
+
+/* ---------- audio ---------- */
+let ctx=null,analyser=null,buf=null,dBuf=null,micOn=false,muteUntil=0,analyser2=null,spec=null,MAXB=0;
+async function ensureCtx(){
+  if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();}
+  if(ctx.state==='suspended'){await ctx.resume();}
+}
+const bufCache={};
+function pluckBuffer(f){
+  const key=f.toFixed(2); if(bufCache[key]) return bufCache[key];
+  const sr=ctx.sampleRate, N=Math.floor(sr*2.6), b=ctx.createBuffer(1,N,sr), d=b.getChannelData(0);
+  const p=Math.max(2,Math.round(sr/f-0.5)), ring=new Float32Array(p);
+  let prev=0; for(let i=0;i<p;i++){const r=Math.random()*2-1; prev=prev*0.5+r*0.5; ring[i]=prev;}
+  let idx=0; const decay=0.9965;
+  for(let i=0;i<N;i++){const nx=(idx+1)%p; d[i]=ring[idx]; ring[idx]=decay*0.5*(ring[idx]+ring[nx]); idx=nx;}
+  return bufCache[key]=b;
+}
+function pluck(f,when,vol){
+  const s=ctx.createBufferSource(); s.buffer=pluckBuffer(f);
+  const g=ctx.createGain(); g.gain.value=vol||0.55; s.connect(g).connect(ctx.destination);
+  s.start(when); return when+2.6;
+}
+async function playNotes(freqs,gap){
+  await ensureCtx(); let t=ctx.currentTime+0.05, end=t;
+  freqs.forEach((f,i)=>{end=Math.max(end,pluck(f,t+i*gap,freqs.length>1?0.35:0.6));});
+  muteUntil=performance.now()+(end-ctx.currentTime)*1000;
+}
+
+async function startMic(){
+  $('micErr').hidden=true;
+  try{
+    await ensureCtx();
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error('nosupport');
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const src=ctx.createMediaStreamSource(stream);
+    analyser=ctx.createAnalyser(); analyser.fftSize=4096; src.connect(analyser);
+    analyser2=ctx.createAnalyser(); analyser2.fftSize=32768; analyser2.smoothingTimeConstant=0; src.connect(analyser2);
+    spec=new Float32Array(analyser2.frequencyBinCount); MAXB=Math.ceil(460*analyser2.fftSize/ctx.sampleRate)+2;
+    buf=new Float32Array(analyser.fftSize); dBuf=new Float32Array(1024);
+    micOn=true; $('micDot').classList.add('on'); $('micBtn').hidden=true;
+    $('micState').textContent='Mikrofon poslouchá.';
+    if(!tunerTarget) setAdvice('Brnkni na jednu strunu.','');
+    tick();
+    return true;
+  }catch(e){
+    const el=$('micErr'); el.hidden=false;
+    el.textContent=(e&&e.name==='NotAllowedError')
+      ?'Přístup k mikrofonu byl zamítnut. Povol ho v nastavení prohlížeče pro tuto stránku a zkus to znovu.'
+      :'Mikrofon se nepodařilo spustit. Otevři stránku v Safari nebo Chrome a povol mikrofon. Poslech tónů funguje i bez něj.';
+    return false;
+  }
+}
+$('micBtn').addEventListener('click',startMic);
+
+/* YIN pitch detection */
+function detect(){
+  analyser.getFloatTimeDomainData(buf);
+  const sr=ctx.sampleRate, W=2048, minT=Math.floor(sr/1000), maxT=Math.min(Math.floor(sr/62),dBuf.length-1);
+  let rms=0; for(let i=0;i<W;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/W);
+  if(rms<0.006) return {f:-1,rms};
+  const d=dBuf; d[0]=1; let run=0;
+  for(let t=1;t<=maxT;t++){let s=0; for(let i=0;i<W;i++){const x=buf[i]-buf[i+t]; s+=x*x;} run+=s; d[t]=run?s*t/run:1;}
+  let tau=-1;
+  for(let t=minT;t<=maxT;t++){ if(d[t]<0.15){ while(t+1<=maxT&&d[t+1]<d[t]) t++; tau=t; break; } }
+  if(tau<0) return {f:-1,rms};
+  let bt=tau;
+  if(tau>1&&tau<maxT){const a=d[tau-1],b=d[tau],c=d[tau+1],den=a+c-2*b; if(den) bt=tau+(a-c)/(2*den);}
+  return {f:sr/bt,rms};
+}
+
+const hist=[]; const rmsHist=[];
+function median(a){const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)];}
+function tick(){
+  if(!micOn) return;
+  const now=performance.now();
+  if(now<muteUntil){hist.length=0; setTimeout(tick,60); return;}
+  const r=detect();
+  // onset detection
+  const minPrev=rmsHist.length?Math.min(...rmsHist):r.rms;
+  const onset=r.rms>0.02&&r.rms>minPrev*1.8;
+  rmsHist.push(r.rms); if(rmsHist.length>4) rmsHist.shift();
+  if(r.f>0){hist.push(r.f); if(hist.length>5) hist.shift();} else if(r.rms<0.006){hist.length=0;}
+  const f=hist.length>=3?median(hist):-1;
+  if(!views.chord.hidden){ if(lis) listenTick(r,onset,now); else chordTick(r,onset,now); } else tunerTick(f,r);
+  setTimeout(tick,40);
+}
+
+/* ---------- tuner ---------- */
+let tunerTarget=null; let goodSince=0; const doneStrings=new Set();
+const meter=$('meter');
+(function buildMeter(){
+  let s='';
+  for(let c=-50;c<=50;c+=5){
+    const x=160+c*2.8, major=c%25===0;
+    s+=`<line x1="${x}" x2="${x}" y1="${major?14:22}" y2="${major?52:44}" stroke="currentColor" stroke-width="${major?2:1}" opacity="${c===0?0:.45}"/>`;
+  }
+  s+='<rect x="150" y="8" width="20" height="50" rx="10" fill="none" stroke="currentColor" opacity=".35"/>';
+  s+='<circle cx="160" cy="33" r="6" fill="currentColor" opacity=".9"/>';
+  s+='<text x="12" y="68" font-size="11" fill="currentColor" opacity=".7">nízko</text><text x="308" y="68" font-size="11" text-anchor="end" fill="currentColor" opacity=".7">vysoko</text>';
+  s+='<g id="needle" style="transition:transform .12s ease-out"><rect x="157" y="4" width="6" height="58" rx="3" fill="var(--brass)"/></g>';
+  meter.innerHTML=s; meter.style.color='var(--pearl)';
+})();
+const needle=()=>document.getElementById('needle');
+function setNeedle(c,color){const cl=Math.max(-50,Math.min(50,c)); const n=needle(); n.style.transform=`translateX(${cl*2.8}px)`; n.firstChild.setAttribute('fill',color||'var(--brass)');}
+function setAdvice(t,cls){const a=$('advice'); a.textContent=t; a.className='advice'+(cls?' '+cls:'');}
+
+const pegs=$('pegs');
+STRINGS.forEach((s,i)=>{
+  const b=document.createElement('button'); b.className='peg'; b.setAttribute('aria-pressed','false');
+  b.innerHTML=`<b>${s.name}</b><small>${s.num}. struna</small>`;
+  b.addEventListener('click',()=>{
+    const sel=tunerTarget===i; tunerTarget=sel?null:i; updatePegs();
+    if(!sel){playNotes([s.f],0); $('target').textContent=`Ladíš ${s.num}. strunu (${s.name})`;}
+    else $('target').textContent='Automatické rozpoznání struny';
+  });
+  pegs.appendChild(b);
+});
+function updatePegs(){[...pegs.children].forEach((b,i)=>{b.setAttribute('aria-pressed',tunerTarget===i?'true':'false'); b.classList.toggle('done',doneStrings.has(i));});}
+
+function tunerTick(f){
+  const note=$('note');
+  if(f<0){note.classList.remove('good'); goodSince=0; return;}
+  let si=tunerTarget;
+  if(si===null){let best=1e9; STRINGS.forEach((s,i)=>{const d=Math.abs(cents(f,s.f)); if(d<best){best=d;si=i;}});}
+  const s=STRINGS[si], c=cents(f,s.f);
+  $('target').textContent=`${s.num}. struna, cíl ${s.name}`+(tunerTarget===null?' (rozpoznáno automaticky)':'');
+  note.textContent=noteName(f);
+  const abs=Math.abs(c);
+  if(abs<=5){
+    note.classList.add('good'); setNeedle(c,'var(--good)');
+    if(!goodSince) goodSince=performance.now();
+    if(performance.now()-goodSince>700){ setAdvice(`Naladěno ✓ ${s.num}. struna je v pořádku`,'good'); if(!doneStrings.has(si)){doneStrings.add(si);updatePegs();} }
+    else setAdvice('Skoro… nech strunu znít','good');
+  }else{
+    goodSince=0; note.classList.remove('good'); setNeedle(c,abs>25?'var(--bad)':'var(--brass)');
+    if(abs>300) setAdvice(c<0?'Tón je hodně nízko. Přitahuj strunu, klidně víc otáček.':'Tón je hodně vysoko. Povol strunu, jinak hrozí její přetržení.','bad');
+    else if(abs>50) setAdvice(c<0?'Příliš nízko ↑ přitáhni strunu':'Příliš vysoko ↓ povol strunu','bad');
+    else if(abs>15) setAdvice(c<0?'Trochu nízko ↑ přitáhni':'Trochu vysoko ↓ povol','');
+    else setAdvice(c<0?'Kousíček nízko, jen jemně přitáhni':'Kousíček vysoko, jen jemně povol','');
+  }
+}
+
+/* ---------- chords ---------- */
+let current='Em';
+const chips=$('chips');
+Object.keys(CHORDS).forEach(k=>{
+  const b=document.createElement('button'); b.className='chip'; b.textContent=k;
+  b.addEventListener('click',()=>{current=k; stopCheck(); if(lis) waitingVerdict();});
+  chips.appendChild(b);
+});
+function renderChord(highlight,status){
+  [...chips.children].forEach(b=>b.setAttribute('aria-pressed',b.textContent===current?'true':'false'));
+  const ch=CHORDS[current]; $('chordNote').textContent=ch.note;
+  const x0=40, dx=36, y0=50, dy=52, frets=4;
+  let s=`<text x="130" y="22" text-anchor="middle" font-size="22" font-weight="800" fill="var(--ink)">${current}</text>`;
+  s+=`<rect x="${x0-2}" y="${y0-7}" width="${dx*5+4}" height="8" rx="2" fill="var(--ink)"/>`;
+  for(let f=1;f<=frets;f++) s+=`<line x1="${x0}" x2="${x0+dx*5}" y1="${y0+f*dy}" y2="${y0+f*dy}" stroke="var(--muted)" stroke-width="2"/>`;
+  s+=`<text x="${x0-14}" y="${y0+dy/2+5}" text-anchor="end" font-size="11" fill="var(--muted)">1</text><text x="${x0-14}" y="${y0+dy*1.5+5}" text-anchor="end" font-size="11" fill="var(--muted)">2</text><text x="${x0-14}" y="${y0+dy*2.5+5}" text-anchor="end" font-size="11" fill="var(--muted)">3</text>`;
+  for(let i=0;i<6;i++){
+    const x=x0+i*dx, hl=highlight===i, st=status&&status[i];
+    const col=hl?'var(--brass)':st==='ok'?'var(--good)':st==='bad'?'var(--bad)':'var(--ink)';
+    s+=`<line x1="${x}" x2="${x}" y1="${y0}" y2="${y0+frets*dy}" stroke="${col}" stroke-width="${(hl||st)?4:(3.2-i*0.4)}"/>`;
+    const fr=ch.frets[i];
+    if(fr==='x') s+=`<text x="${x}" y="${y0-14}" text-anchor="middle" font-size="16" font-weight="800" fill="var(--bad)">✕</text>`;
+    else if(fr===0) s+=`<circle cx="${x}" cy="${y0-19}" r="7" fill="none" stroke="${col}" stroke-width="2"/>`;
+    else s+=`<circle cx="${x}" cy="${y0+(fr-0.5)*dy}" r="14" fill="${(hl||st)?col:'var(--wood)'}"/><text x="${x}" y="${y0+(fr-0.5)*dy+5}" text-anchor="middle" font-size="15" font-weight="800" fill="var(--pearl)">${ch.fingers[i]}</text>`;
+    s+=`<text x="${x}" y="${y0+frets*dy+22}" text-anchor="middle" font-size="14" font-weight="600" fill="${(hl||st)?col:'var(--muted)'}">${STRINGS[i].name}</text>`;
+  }
+  $('diagram').innerHTML=s;
+}
+function chordFreqs(){const ch=CHORDS[current]; return ch.frets.map((fr,i)=>fr==='x'?null:freqOf(i,fr)).filter(Boolean);}
+$('playChord').addEventListener('click',()=>playNotes(chordFreqs(),0.035));
+$('playSlow').addEventListener('click',()=>playNotes(chordFreqs(),0.55));
+
+/* string-by-string check */
+let chk=null;
+function stopCheck(){chk=null; $('checkCard').hidden=true; renderChord();}
+$('checkBtn').addEventListener('click',async()=>{
+  if(!micOn){const ok=await startMic(); if(!ok) return;}
+  stopListen();
+  const ch=CHORDS[current];
+  chk={order:ch.frets.map((f,i)=>f==='x'?-1:i).filter(i=>i>=0), pos:0, res:{}, armAt:performance.now()+400, onsetAt:0, samples:[], loudFrames:0, waiting:false};
+  $('checkCard').hidden=false; $('summary').hidden=true; renderChecklist();
+  $('checkCard').scrollIntoView({behavior:'smooth',block:'start'});
+});
+function renderChecklist(){
+  const ch=CHORDS[current], ul=$('checklist'); ul.innerHTML='';
+  const cur=chk&&chk.pos<chk.order.length?chk.order[chk.pos]:-1;
+  renderChord(cur>=0?cur:undefined);
+  STRINGS.forEach((s,i)=>{
+    const li=document.createElement('li'), fr=ch.frets[i], r=chk.res[i];
+    let msg;
+    if(fr==='x'){li.className='skip'; msg='<strong>Nehraj</strong>Tuto strunu vynech.';}
+    else if(r&&r.ok){li.className='ok'; msg='<strong>Zní správně</strong>'+(fr===0?'Volná struna zní čistě.':`Tón ${noteName(freqOf(i,fr))} sedí.`);}
+    else if(r){li.className='fail'; msg=`<strong>${r.title}</strong>${r.text}`;}
+    else if(i===cur){li.className='current'; msg=`<strong>Brnkni teď na ${s.num}. strunu</strong>`+(fr===0?'Má znít volně, bez prstu.':`Prst č. ${ch.fingers[i]} na ${fr}. pražci. Čekám na tón…`);}
+    else msg=`<span class="muted">${fr===0?'Volná struna':fr+'. pražec'}</span>`;
+    li.innerHTML=`<div class="badge">${fr==='x'?'✕':(r&&r.ok?'✓':s.name)}<small>${fr==='x'?'':s.num+'.'}</small></div><div class="msg">${msg}</div>`;
+    if(r&&!r.ok&&i===cur){
+      const d=document.createElement('div'); d.className='rowbtns';
+      d.innerHTML='<button class="btn" data-a="retry">Zkusit znovu</button><button class="btn" data-a="next">Pokračovat dál</button>';
+      d.addEventListener('click',e=>{const a=e.target.dataset.a; if(a==='retry'){delete chk.res[i]; arm(); renderChecklist();} if(a==='next') advance();});
+      li.lastChild.appendChild(d);
+    }
+    ul.appendChild(li);
+  });
+  if(chk.pos>=chk.order.length){
+    const bad=chk.order.filter(i=>!(chk.res[i]&&chk.res[i].ok)).length, sm=$('summary'); sm.hidden=false;
+    sm.textContent=bad===0?`Výborně, všech ${chk.order.length} strun zní správně. Teď zkus brnknout celý akord najednou.`:`Správně zní ${chk.order.length-bad} z ${chk.order.length} strun. Oprav označené struny a spusť kontrolu znovu.`;
+  }
+}
+function arm(){chk.armAt=performance.now()+350; chk.onsetAt=0; chk.samples=[]; chk.loudFrames=0; chk.waiting=false;}
+function advance(){chk.pos++; arm(); renderChecklist();}
+
+function judge(si,f){
+  const fr=CHORDS[current].frets[si], exp=freqOf(si,fr), c=cents(f,exp);
+  const oct=Math.abs(c-1200*Math.round(c/1200));
+  if(oct<45) return {ok:true};
+  const got=noteName(f), want=noteName(exp);
+  if(Math.abs(c)<110) return {title:'Tón je mírně mimo',text:`Struna je o ${Math.round(Math.abs(c))} centů ${c<0?'níž':'výš'}. Zkontroluj naladění, případně netlač tak silně.`};
+  if(fr>0&&Math.abs(cents(f,STRINGS[si].f))<45) return {title:'Zní prázdná struna',text:`Prst strunu nepřitlačuje. Tlač pevněji špičkou prstu na ${fr}. pražci.`};
+  const n=Math.round(c/100);
+  if(fr>0&&Math.abs(n)<=3&&Math.abs(c-n*100)<45){
+    const wrong=fr+n;
+    return {title:`Zní ${got} místo ${want}`,text:`Prst je nejspíš na ${wrong}. pražci. Posuň ho na ${fr}. pražec (${n>0?'blíž k hlavě kytary':'dál od hlavy kytary'}).`};
+  }
+  if(fr===0) return {title:`Zní ${got} místo ${want}`,text:'Tahle struna má znít volně. Asi se jí dotýká jiný prst, zvedni prsty víc do oblouku.'};
+  return {title:`Zní ${got} místo ${want}`,text:'Mikrofon zachytil jiný tón. Možná zněla i sousední struna. Brnkni jen na tuto a zkus to znovu.'};
+}
+function chordTick(r,onset,now){
+  if(!chk||chk.pos>=chk.order.length||chk.waiting) return;
+  const si=chk.order[chk.pos];
+  if(chk.res[si]) return;
+  if(now<chk.armAt) return;
+  if(onset&&!chk.onsetAt){chk.onsetAt=now; chk.samples=[]; chk.loudFrames=0;}
+  if(!chk.onsetAt) return;
+  const dt=now-chk.onsetAt;
+  if(dt<80) return;
+  if(r.rms>0.01) chk.loudFrames++;
+  if(r.f>0) chk.samples.push(r.f);
+  if(chk.samples.length>=6){
+    const f=median(chk.samples), res=judge(si,f); chk.res[si]=res;
+    if(res.ok){chk.waiting=true; renderChecklist(); setTimeout(()=>{if(chk){chk.waiting=false; advance();}},650);}
+    else renderChecklist();
+    return;
+  }
+  if(dt>1300){
+    if(chk.loudFrames>=6&&chk.samples.length<3){
+      chk.res[si]={title:'Struna nezní čistě',text:'Drnčí nebo je tlumená. Přitlač prst těsně před pražec a ostatní prsty zvedni víc kolmo, aby se jí nedotýkaly.'};
+      renderChecklist();
+    }else{chk.onsetAt=0;}
+  }
+}
+
+/* whole-chord listening */
+let lis=null;
+function setVerdict(title,cls,html){const v=$('verdict'); v.hidden=false; const t=$('vTitle'); t.textContent=title; t.className='vt'+(cls?' '+cls:''); $('vText').innerHTML=html||'';}
+const LBL={autoBtn:'Poznat, jaký akord hraju',listenBtn:'Poslouchat vybraný akord'};
+function setListenButtons(){ Object.keys(LBL).forEach(id=>{ const on=lis&&((id==='autoBtn')===lis.auto); $(id).textContent=on?'Přestat poslouchat':LBL[id]; }); }
+function waitingVerdict(){
+  if(lis&&lis.auto) setVerdict('Zahraj libovolný akord','','Hraj akordy v jakémkoli pořadí. Po každém brnknutí ukážu, který akord hraješ, a jestli zní čistě.');
+  else setVerdict(`Brnkni akord ${current}`,'', 'Drž akord, jednou přejeď přes struny a nech je znít. Výsledek se ukáže asi po vteřině. Rychlá kontrola občas přehlédne tlumenou strunu, jistotu dá přesná kontrola po strunách.');
+  renderChord();
+}
+function stopListen(){ if(!lis) return; lis=null; setListenButtons(); $('verdict').hidden=true; renderChord(); }
+async function startListen(auto){
+  if(lis&&lis.auto===auto){stopListen(); return;}
+  if(!micOn){const ok=await startMic(); if(!ok) return;}
+  if(chk) stopCheck();
+  lis={auto,onsetAt:0,acc:null,frames:0};
+  setListenButtons(); waitingVerdict();
+}
+$('listenBtn').addEventListener('click',()=>startListen(false));
+$('autoBtn').addEventListener('click',()=>startListen(true));
+function binOf(f){return f*analyser2.fftSize/ctx.sampleRate;}
+function amp(acc,f,c){
+  const lo=Math.max(0,Math.round(binOf(f*Math.pow(2,-c/1200)))), hi=Math.min(acc.length-1,Math.round(binOf(f*Math.pow(2,c/1200))));
+  let m=0; for(let b=lo;b<=hi;b++) if(acc[b]>m) m=acc[b]; return m;
+}
+function listenTick(r,onset,now){
+  if(onset&&(!lis.onsetAt||now-lis.onsetAt>1400)){lis.onsetAt=now; lis.acc=new Float32Array(MAXB); lis.frames=0;}
+  if(!lis.onsetAt||!lis.acc) return;
+  const dt=now-lis.onsetAt;
+  if(dt>=300&&dt<=1100){
+    analyser2.getFloatFrequencyData(spec);
+    for(let b=0;b<MAXB;b++){const v=spec[b]; if(isFinite(v)) lis.acc[b]+=Math.pow(10,v/20);}
+    lis.frames++;
+  }else if(dt>1100){
+    if(lis.frames>=5){ if(lis.auto) recognizeChord(lis.acc); else evaluateChord(lis.acc,false); }
+    lis.acc=null;
+  }
+}
+function evaluateChord(acc,auto){
+  const ch=CHORDS[current];
+  const b0=Math.floor(binOf(70)), b1=Math.min(acc.length,Math.floor(binOf(450)));
+  const sorted=Array.from(acc.slice(b0,b1)).sort((a,b)=>a-b);
+  const floor=sorted[Math.floor(sorted.length*0.5)]||1e-9;
+  const played=[]; ch.frets.forEach((fr,i)=>{if(fr!=='x') played.push({i,fr,f:freqOf(i,fr)});});
+  const extra=[];
+  const explainedBy=(f,list)=>list.some(q=>[1,2,3,4].some(n=>Math.abs(cents(f,q*n))<30));
+  const explained=f=>explainedBy(f,played.map(p=>p.f).concat(extra));
+  const level=p=>{
+    let a=amp(acc,p.f,35);
+    if(p.f<140){
+      const others=played.filter(q=>q!==p).map(q=>q.f);
+      [2,3].forEach(h=>{ if(!explainedBy(h*p.f,others)) a=Math.max(a,0.7*amp(acc,h*p.f,30)); });
+    }
+    return a;
+  };
+  const peak=Math.max(...played.map(level));
+  if(peak<floor*6){setVerdict('Akord jsem neslyšel zřetelně','bad','Brnkni o něco silněji a drž telefon blíž ke kytaře.'); renderChord(); return;}
+  const status={}, problems=[];
+  ch.frets.forEach((fr,i)=>{
+    if(fr!=='x') return;
+    const f=STRINGS[i].f; if(explained(f)) return;
+    const a=amp(acc,f,30);
+    if(a>floor*6&&a>peak*0.05){status[i]='bad'; extra.push(f); problems.push({i,t:'zní, ale má zůstat nezahraná. Začni brnkat až od další struny.'});}
+  });
+  played.forEach(p=>{
+    const a=level(p), fu=p.f*Math.pow(2,1/12), fd=p.f*Math.pow(2,-1/12);
+    const up=explained(fu)?0:amp(acc,fu,30), dn=explained(fd)?0:amp(acc,fd,30), nb=Math.max(up,dn);
+    if(p.fr>0&&nb>a*1.5&&nb>peak*0.08){
+      status[p.i]='bad'; extra.push(up>dn?fu:fd);
+      problems.push({i:p.i,t:`zní o pražec ${up>dn?'výš':'níž'}. Dej prst přesně na ${p.fr}. pražec.`});
+    }else if(a>floor*4&&a>peak*0.06){
+      status[p.i]='ok';
+    }else{
+      status[p.i]='bad';
+      problems.push({i:p.i,t:p.fr>0?`skoro nezní. Přitlač pevněji prst č. ${ch.fingers[p.i]} na ${p.fr}. pražci, těsně u kovového pražce.`:'skoro nezní. Má znít volně, nejspíš se jí dotýká jiný prst. Zvedni prsty víc do oblouku.'});
+    }
+  });
+  renderChord(undefined,status);
+  if(!problems.length){
+    setVerdict(auto?`Hraješ ${current} ✓`:`✓ ${current} zní správně`,'good',`Slyším všech ${played.length} strun akordu. Zkus ho zahrát ještě párkrát, ať si to prsty zapamatují.`);
+  }else{
+    problems.sort((a,b)=>a.i-b.i);
+    setVerdict(auto?`Nejspíš hraješ ${current}, ale ještě ne úplně`:'Ještě ne úplně','bad',problems.map(p=>`<div><b>${STRINGS[p.i].num}. struna (${STRINGS[p.i].name})</b> ${p.t}</div>`).join('')+'<div style="opacity:.75">Oprav to a brnkni znovu.</div>');
+  }
+}
+
+function recognizeChord(acc){
+  const b0=Math.round(binOf(75)), b1=Math.min(acc.length-2,Math.round(binOf(450)));
+  const sorted=Array.from(acc.slice(Math.floor(binOf(70)),Math.floor(binOf(450)))).sort((a,b)=>a-b);
+  const floor=sorted[Math.floor(sorted.length*0.5)]||1e-9;
+  let mx=0; for(let b=b0;b<=b1;b++) if(acc[b]>mx) mx=acc[b];
+  const pk=[]; for(let b=b0;b<=b1;b++){const v=acc[b]; if(v>acc[b-1]&&v>=acc[b+1]&&v>floor*8&&v>mx*0.05) pk.push({f:b*ctx.sampleRate/analyser2.fftSize,a:v});}
+  const tot=pk.reduce((s,p)=>s+p.a,0);
+  if(!pk.length||mx<floor*6){setVerdict('Akord jsem neslyšel zřetelně','bad','Brnkni o něco silněji a drž telefon blíž ke kytaře.'); renderChord(); return;}
+  let best=null,bestScore=0;
+  Object.keys(CHORDS).forEach(k=>{
+    const fs=CHORDS[k].frets.map((fr,i)=>fr==='x'?null:freqOf(i,fr)).filter(Boolean);
+    const E=pk.filter(p=>fs.some(q=>[1,2,3,4].some(n=>Math.abs(cents(p.f,q*n))<30))).reduce((s,p)=>s+p.a,0)/tot;
+    const cov=fs.filter(f=>Math.max(amp(acc,f,35),f<140?0.7*amp(acc,2*f,30):0)>Math.max(floor*4,mx*0.06)).length/fs.length;
+    const sc=E*cov; if(sc>bestScore){bestScore=sc; best=k;}
+  });
+  if(!best||bestScore<0.55){
+    setVerdict('Tenhle akord nepoznávám','bad',`Umím poznat ${Object.keys(CHORDS).join(', ')}. Zkontroluj prsty podle nákresu a brnkni znovu.`);
+    renderChord(); return;
+  }
+  current=best; evaluateChord(acc,true);
+}
+
+/* ---------- tabs ---------- */
+const views={tune:$('view-tune'),chord:$('view-chord')};
+function show(v){
+  views.tune.hidden=v!=='tune'; views.chord.hidden=v!=='chord';
+  $('tab-tune').setAttribute('aria-selected',v==='tune'); $('tab-chord').setAttribute('aria-selected',v==='chord');
+  if(v==='tune'){ stopCheck(); stopListen(); }
+}
+$('tab-tune').addEventListener('click',()=>show('tune'));
+$('tab-chord').addEventListener('click',()=>show('chord'));
+
+updatePegs(); renderChord(); setNeedle(0);
+})();
+</script>
+</body>
+</html>
