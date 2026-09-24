@@ -1,7 +1,7 @@
 {
   "name": "Ladička a kontrola akordů",
   "short_name": "Kytara",
-  "start_url": "kytara.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
